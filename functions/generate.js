@@ -36,8 +36,10 @@ export async function onRequestPost({ request, env }) {
   const json = (obj, status = 200) =>
     new Response(JSON.stringify(obj), { status, headers: cors });
 
-  if (!env.OPENROUTER_KEY) {
-    return json({ error: 'no_key', message: 'Секрет OPENROUTER_KEY не задан в настройках Pages' }, 500);
+  // Ключ OpenRouter: принимаем любое из привычных имён секрета
+  const apiKey = env.OPENROUTER_KEY || env.kimi || env.KIMI || env.Kimi;
+  if (!apiKey) {
+    return json({ error: 'no_key', message: 'Секрет с ключом OpenRouter не задан в настройках Pages' }, 500);
   }
 
   // Честный бесплатный лимит: 3 генерации на IP за 30 дней (нужно KV-хранилище LIMITS)
@@ -60,7 +62,7 @@ export async function onRequestPost({ request, env }) {
   const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer ' + env.OPENROUTER_KEY,
+      'Authorization': 'Bearer ' + apiKey,
       'Content-Type': 'application/json',
       'HTTP-Referer': ALLOWED_ORIGINS[1],
       'X-Title': 'Kod Sudby Greetings',
