@@ -683,7 +683,11 @@ async function proxyGenerate(ctx){
     body: JSON.stringify({ prompt: buildAiPrompt(ctx) })
   });
   if (resp.status === 402){ const e = new Error('limit'); e.limit = true; throw e; }
-  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  if (!resp.ok){
+    let msg = 'HTTP ' + resp.status;
+    try { const d = await resp.json(); if (d.message) msg = d.message.slice(0, 200); } catch {}
+    throw new Error(msg);
+  }
   const data = await resp.json();
   if (!data.text) throw new Error('пустой ответ');
   return data.text;

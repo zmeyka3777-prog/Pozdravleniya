@@ -31,6 +31,18 @@ export async function onRequestOptions({ request }) {
   return new Response(null, { headers: corsHeaders(request) });
 }
 
+// Диагностика: открыть /generate в браузере — покажет состояние без секретов
+export async function onRequestGet({ request, env }) {
+  const keyFound = Boolean(env.OPENROUTER_KEY || env.kimi || env.KIMI || env.Kimi);
+  return new Response(JSON.stringify({
+    status: 'функция работает',
+    key_found: keyFound,
+    key_hint: keyFound ? 'ключ на месте' : 'секрет не найден — добавьте OPENROUTER_KEY (или kimi) в Settings → Variables and Secrets и сделайте Retry deployment',
+    model: env.MODEL || 'moonshotai/kimi-k2:free',
+    limits_kv: Boolean(env.LIMITS),
+  }, null, 2), { headers: corsHeaders(request) });
+}
+
 export async function onRequestPost({ request, env }) {
   const cors = corsHeaders(request);
   const json = (obj, status = 200) =>
@@ -79,7 +91,8 @@ export async function onRequestPost({ request, env }) {
   });
 
   if (!resp.ok) {
-    return json({ error: 'upstream', message: 'OpenRouter HTTP ' + resp.status }, 502);
+    const errText = (await resp.text()).slice(0, 300);
+    return json({ error: 'upstream', message: 'OpenRouter HTTP ' + resp.status + ': ' + errText }, 502);
   }
   const data = await resp.json();
   const text = data.choices?.[0]?.message?.content?.trim();
