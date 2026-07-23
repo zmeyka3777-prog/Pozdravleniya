@@ -38,7 +38,7 @@ export async function onRequestGet({ request, env }) {
     status: 'функция работает',
     key_found: keyFound,
     key_hint: keyFound ? 'ключ на месте' : 'секрет не найден — добавьте OPENROUTER_KEY (или kimi) в Settings → Variables and Secrets и сделайте Retry deployment',
-    model: env.MODEL || 'moonshotai/kimi-k2:free',
+    model: env.MODEL || 'авто: перебор бесплатных моделей (deepseek → qwen → kimi → …)',
     limits_kv: Boolean(env.LIMITS),
   }, null, 2), { headers: corsHeaders(request) });
 }
@@ -71,32 +71,54 @@ export async function onRequestPost({ request, env }) {
   const prompt = String(body.prompt || '').slice(0, 6000);
   if (!prompt) return json({ error: 'no_prompt' }, 400);
 
-  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + apiKey,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': ALLOWED_ORIGINS[1],
-      'X-Title': 'Kod Sudby Greetings',
-    },
-    body: JSON.stringify({
-      model: env.MODEL || 'moonshotai/kimi-k2:free',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.9,
-      max_tokens: 1300,
-    }),
-  });
+  // Список бесплатных моделей: пробуем по очереди, пока одна не ответит.
+  // Состав меняется на стороне OpenRouter — поэтому перебор, а не одна модель.
+  const FREE_MODELS = [
+    'deepseek/deepseek-chat-v3-0324:free',
+    'qwen/qwen3-235b-a22b:free',
+    'moonshotai/kimi-k2:free',
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'google/gemma-3-27b-it:free',
+    'mistralai/mistral-small-3.2-24b-instruct:free',
+  ];
+  const models = [...new Set([env.MODEL, ...FREE_MODELS].filter(Boolean))];
 
-  if (!resp.ok) {
+  let lastErr = 'нет доступных моделей';
+  for (const model of models) {
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': ALLOWED_ORIGINS[1],
+        'X-Title': 'Kod Sudby Greetings',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.9,
+        max_tokens: 1300,
+      }),
+    });
+
+    if (resp.ok) {
+      const data = await resp.json();
+      const text = data.choices?.[0]?.message?.content?.trim();
+      if (text) return json({ text, model });
+      lastErr = 'модель ' + model + ' вернула пустой ответ';
+      continue;
+    }
+
     const errText = (await resp.text()).slice(0, 300);
-    return json({ error: 'upstream', message: 'OpenRouter HTTP ' + resp.status + ': ' + errText }, 502);
+    lastErr = 'OpenRouter HTTP ' + resp.status + ' (' + model + '): ' + errText;
+    // Модель недоступна/не найдена — пробуем следующую; другие ошибки фатальны
+    const retryable = resp.status === 404 || resp.status === 400 || resp.status === 429 ||
+      errText.includes('unavailable') || errText.includes('not found') || errText.includes('No endpoints');
+    if (!retryable) break;
   }
-  const data = await resp.json();
-  const text = data.choices?.[0]?.message?.content?.trim();
-  if (!text) return json({ error: 'empty' }, 502);
 
-  return json({ text });
+  return json({ error: 'upstream', message: lastErr }, 502);
 }

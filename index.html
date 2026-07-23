@@ -390,9 +390,9 @@
       <div class="hint">Бесплатный ключ: зарегистрируйтесь на <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> → Keys → Create Key. Модель Kimi K2 (free) не требует оплаты. Ключ хранится только в вашем браузере и никуда не передаётся, кроме OpenRouter.</div>
     </div>
     <div class="field">
-      <label>Модель</label>
-      <input id="aiModel" type="text" placeholder="moonshotai/kimi-k2:free">
-      <div class="hint">По умолчанию: <b>moonshotai/kimi-k2:free</b>. Другие бесплатные: deepseek/deepseek-chat-v3-0324:free, qwen/qwen3-235b-a22b:free</div>
+      <label>Модель (можно не заполнять)</label>
+      <input id="aiModel" type="text" placeholder="авто — сайт сам подберёт бесплатную модель">
+      <div class="hint">Если пусто, сайт сам переберёт бесплатные модели (DeepSeek → Qwen → Kimi → Llama), пока одна не ответит. Впишите конкретную модель, только если хотите именно её.</div>
     </div>
     <button class="btn" id="aiSave">Сохранить</button>
     <button class="btn secondary" style="width:100%; margin-top:10px;" id="aiTest">🧪 Проверить подключение ИИ</button>
@@ -666,10 +666,18 @@ const PROXY_URL = location.hostname.endsWith('pages.dev')
   : 'https://pozdravleniya.pages.dev/generate';
 
 const AI_KEYS = { enabled:'ks_ai_on', key:'ks_ai_key', model:'ks_ai_model' };
+// Бесплатные модели для перебора (состав на OpenRouter меняется)
+const MODEL_CANDIDATES = [
+  'deepseek/deepseek-chat-v3-0324:free',
+  'qwen/qwen3-235b-a22b:free',
+  'moonshotai/kimi-k2:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'google/gemma-3-27b-it:free'
+];
 const aiConf = () => ({
   enabled: localStorage.getItem(AI_KEYS.enabled) === '1',
   key: localStorage.getItem(AI_KEYS.key) || '',
-  model: localStorage.getItem(AI_KEYS.model) || 'moonshotai/kimi-k2:free'
+  model: localStorage.getItem(AI_KEYS.model) || ''
 });
 
 const LEN_SPEC = {
@@ -739,29 +747,41 @@ async function aiGenerate(ctx){
       if (e.limit || !(conf.enabled && conf.key)) throw e;
     }
   }
-  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + conf.key,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': location.origin,
-      'X-Title': 'Kod Sudby Greetings'
-    },
-    body: JSON.stringify({
-      model: conf.model,
-      messages: [
-        { role: 'system', content: 'Ты — талантливый автор тёплых персональных поздравлений на русском языке. Пишешь небанально, точно по заданному тону, попадая в характер человека.' },
-        { role: 'user', content: buildAiPrompt(ctx) }
-      ],
-      temperature: 0.9,
-      max_tokens: 1300
-    })
-  });
-  if (!resp.ok) throw new Error('HTTP ' + resp.status);
-  const data = await resp.json();
-  const text = data.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error('пустой ответ');
-  return text;
+  // Личный ключ: перебираем бесплатные модели, пока одна не ответит
+  const models = [...new Set([conf.model, ...MODEL_CANDIDATES].filter(Boolean))];
+  let lastErr = 'нет доступных моделей';
+  for (const model of models){
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + conf.key,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': location.origin,
+        'X-Title': 'Kod Sudby Greetings'
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: 'Ты — талантливый автор тёплых персональных поздравлений на русском языке. Пишешь небанально, точно по заданному тону, попадая в характер человека.' },
+          { role: 'user', content: buildAiPrompt(ctx) }
+        ],
+        temperature: 0.9,
+        max_tokens: 1300
+      })
+    });
+    if (resp.ok){
+      const data = await resp.json();
+      const text = data.choices?.[0]?.message?.content?.trim();
+      if (text) return text;
+      lastErr = 'пустой ответ'; continue;
+    }
+    const errText = (await resp.text()).slice(0, 200);
+    lastErr = 'HTTP ' + resp.status + ': ' + errText;
+    const retryable = resp.status === 404 || resp.status === 400 || resp.status === 429 ||
+      errText.includes('unavailable') || errText.includes('not found') || errText.includes('No endpoints');
+    if (!retryable) break;
+  }
+  throw new Error(lastErr);
 }
 
 /* ==================== ФРИМИУМ ==================== */
@@ -927,7 +947,7 @@ document.getElementById('gearBtn').addEventListener('click', () => {
 document.getElementById('aiSave').addEventListener('click', () => {
   localStorage.setItem(AI_KEYS.enabled, document.getElementById('aiEnabled').checked ? '1' : '0');
   localStorage.setItem(AI_KEYS.key, document.getElementById('aiKey').value.trim());
-  localStorage.setItem(AI_KEYS.model, document.getElementById('aiModel').value.trim() || 'moonshotai/kimi-k2:free');
+  localStorage.setItem(AI_KEYS.model, document.getElementById('aiModel').value.trim());
   document.getElementById('aiModal').classList.add('hidden');
   toast('Настройки ИИ сохранены');
 });
