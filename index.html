@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Код Судьбы — генератор поздравлений по дате рождения</title>
+<style>
+  :root {
+    --bg1: #1a1033;
+    --bg2: #2d1b4e;
+    --bg3: #0f0a1e;
+    --accent: #b388ff;
+    --accent2: #ff8fc7;
+    --gold: #ffd54f;
+    --glass: rgba(255,255,255,0.07);
+    --glass-border: rgba(255,255,255,0.14);
+    --text: #f3eeff;
+    --muted: #b9aed6;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+    background: radial-gradient(ellipse at 20% 0%, var(--bg2) 0%, var(--bg1) 45%, var(--bg3) 100%);
+    min-height: 100vh;
+    color: var(--text);
+    padding: 24px 16px 64px;
+  }
+  .stars { position: fixed; inset:0; pointer-events:none; z-index:0; }
+  .stars span { position:absolute; width:2px; height:2px; background:#fff; border-radius:50%; opacity:.5; animation: tw 3s infinite alternate; }
+  @keyframes tw { from {opacity:.15} to {opacity:.8} }
+  .wrap { max-width: 760px; margin: 0 auto; position:relative; z-index:1; }
+  header { text-align:center; margin-bottom: 28px; }
+  header h1 {
+    font-size: clamp(26px, 5vw, 40px);
+    background: linear-gradient(90deg, var(--accent), var(--accent2), var(--gold));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    letter-spacing: .5px;
+  }
+  header p { color: var(--muted); margin-top: 8px; font-size: 15px; }
+  .card {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    backdrop-filter: blur(14px);
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.35);
+  }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+  label { display:block; font-size: 13px; color: var(--muted); margin: 10px 0 6px; letter-spacing:.3px; }
+  input, select, textarea {
+    width: 100%;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 15px;
+    outline: none;
+    transition: border .2s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  select option { background: var(--bg1); color: var(--text); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .chip {
+    padding: 8px 14px; border-radius: 999px; font-size: 13px; cursor: pointer;
+    background: rgba(255,255,255,0.07); border:1px solid var(--glass-border);
+    color: var(--muted); user-select:none; transition: all .15s;
+  }
+  .chip.on { background: linear-gradient(90deg, rgba(179,136,255,.35), rgba(255,143,199,.35)); color:#fff; border-color: var(--accent); }
+  .btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding: 14px 26px; border-radius: 14px; border:none; cursor:pointer;
+    font-size: 16px; font-weight: 600; color:#1a1033;
+    background: linear-gradient(90deg, var(--gold), var(--accent2));
+    box-shadow: 0 6px 24px rgba(255,143,199,.35);
+    transition: transform .15s, box-shadow .15s;
+    width: 100%; margin-top: 18px;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,143,199,.5); }
+  .btn.secondary {
+    background: rgba(255,255,255,0.1); color: var(--text);
+    border: 1px solid var(--glass-border); box-shadow:none; width:auto; padding: 10px 18px; font-size:14px;
+  }
+  .hidden { display:none !important; }
+  .arch-head { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .arch-num {
+    width: 72px; height:72px; border-radius: 50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size: 34px; font-weight: 700; color: #1a1033;
+    background: linear-gradient(135deg, var(--gold), var(--accent2));
+    box-shadow: 0 0 30px rgba(255,213,79,.4);
+  }
+  .arch-title h2 { font-size: 22px; }
+  .arch-title p { color: var(--muted); font-size: 14px; margin-top: 3px; }
+  .traits { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:18px; }
+  @media (max-width: 620px) { .traits { grid-template-columns:1fr; } }
+  .trait h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .trait.strong h4 { color: var(--gold); }
+  .trait.weak h4 { color: var(--accent2); }
+  .trait ul { list-style:none; }
+  .trait li { font-size: 14px; color: var(--text); padding: 4px 0 4px 18px; position:relative; }
+  .trait li::before { content:'✦'; position:absolute; left:0; color: var(--accent); font-size: 11px; top: 7px; }
+  .greeting-box {
+    white-space: pre-wrap; font-size: 16px; line-height: 1.65;
+    background: rgba(255,255,255,0.05); border-left: 3px solid var(--gold);
+    border-radius: 12px; padding: 20px; margin-top: 14px;
+  }
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .counter { text-align:center; color: var(--muted); font-size: 13px; margin-top: 14px; }
+  .counter b { color: var(--gold); }
+  /* Paywall modal */
+  .modal-bg { position: fixed; inset:0; background: rgba(10,5,25,.8); backdrop-filter: blur(6px); display:flex; align-items:center; justify-content:center; z-index: 50; padding: 16px; }
+  .modal { max-width: 440px; width:100%; text-align:center; }
+  .modal h3 { font-size: 22px; margin-bottom: 10px; }
+  .modal p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+  .plans { display:flex; gap:10px; margin: 18px 0; }
+  .plan { flex:1; border:1px solid var(--glass-border); border-radius:14px; padding:14px 10px; cursor:pointer; transition: all .15s; }
+  .plan:hover, .plan.best { border-color: var(--gold); background: rgba(255,213,79,.08); }
+  .plan .price { font-size: 20px; font-weight:700; color: var(--gold); }
+  .plan .per { font-size: 12px; color: var(--muted); }
+  .badge { display:inline-block; font-size: 10px; background: var(--gold); color:#1a1033; border-radius: 6px; padding: 2px 8px; font-weight:700; margin-bottom:6px; }
+  footer { text-align:center; color: var(--muted); font-size: 12px; margin-top: 40px; }
+  .toast {
+    position: fixed; bottom: 24px; left:50%; transform: translateX(-50%);
+    background: rgba(255,255,255,.95); color:#1a1033; font-weight:600;
+    padding: 10px 22px; border-radius: 999px; font-size: 14px; z-index: 60;
+    animation: pop .2s;
+  }
+  @keyframes pop { from { transform: translateX(-50%) scale(.8); opacity:0 } }
+</style>
+</head>
+<body>
+<div class="stars" id="stars"></div>
+<div class="wrap">
+  <header>
+    <h1>✨ Код Судьбы</h1>
+    <p>Узнай архетип человека по дате рождения — и подари поздравление,<br>которое попадёт в самую суть</p>
+  </header>
+
+  <!-- ФОРМА -->
+  <div class="card" id="formCard">
+    <div class="grid">
+      <div>
+        <label>Как зовут человека? *</label>
+        <input id="fName" type="text" placeholder="Например: Ольга" maxlength="40">
+      </div>
+      <div>
+        <label>Дата рождения *</label>
+        <input id="fDate" type="date">
+      </div>
+      <div>
+        <label>Кто он(а) для вас?</label>
+        <select id="fRelation">
+          <option value="close">Близкий человек (сестра, брат, лучший друг)</option>
+          <option value="family">Родитель / старший родственник</option>
+          <option value="partner">Любимый человек</option>
+          <option value="friend">Подруга / друг</option>
+          <option value="colleague">Коллега</option>
+          <option value="boss">Руководитель</option>
+          <option value="client">Клиент / партнёр</option>
+        </select>
+      </div>
+      <div>
+        <label>Какой праздник?</label>
+        <select id="fHoliday">
+          <option value="birthday">День рождения</option>
+          <option value="jubilee">Юбилей</option>
+          <option value="newyear">Новый год</option>
+          <option value="march8">8 Марта</option>
+          <option value="feb23">23 Февраля</option>
+          <option value="wedding">Свадьба / годовщина</option>
+          <option value="prof">Профессиональный праздник</option>
+          <option value="custom">Другой (свой вариант)</option>
+        </select>
+      </div>
+      <div id="customHolidayWrap" class="hidden" style="grid-column: 1 / -1;">
+        <label>Название праздника</label>
+        <input id="fCustomHoliday" type="text" placeholder="Например: защита диплома" maxlength="60">
+      </div>
+    </div>
+
+    <label>Пол</label>
+    <div class="chips" id="genderChips">
+      <div class="chip on" data-v="f">Женский</div>
+      <div class="chip" data-v="m">Мужской</div>
+    </div>
+
+    <label>Обращение</label>
+    <div class="chips" id="addrChips">
+      <div class="chip on" data-v="ty">на «ты»</div>
+      <div class="chip" data-v="vy">на «Вы»</div>
+    </div>
+
+    <label>Тон поздравления</label>
+    <div class="chips" id="toneChips">
+      <div class="chip on" data-v="warm">Тёплый и душевный</div>
+      <div class="chip" data-v="solemn">Торжественный</div>
+      <div class="chip" data-v="fun">С юмором</div>
+      <div class="chip" data-v="deep">Философский</div>
+      <div class="chip" data-v="bold">Дерзкий, молодёжный</div>
+    </div>
+
+    <label>Чего пожелать особенно? (можно несколько)</label>
+    <div class="chips" id="wishChips">
+      <div class="chip" data-v="love">Любви</div>
+      <div class="chip" data-v="money">Денег и изобилия</div>
+      <div class="chip" data-v="health">Здоровья</div>
+      <div class="chip" data-v="career">Карьеры</div>
+      <div class="chip" data-v="create">Творчества</div>
+      <div class="chip" data-v="calm">Внутреннего покоя</div>
+      <div class="chip" data-v="travel">Путешествий</div>
+    </div>
+
+    <button class="btn" id="goBtn">🔮 Рассчитать архетип и создать поздравление</button>
+    <div class="counter" id="freeCounter"></div>
+  </div>
+
+  <!-- РЕЗУЛЬТАТ: АРХЕТИП -->
+  <div class="card hidden" id="archCard">
+    <div class="arch-head">
+      <div class="arch-num" id="archNum"></div>
+      <div class="arch-title">
+        <h2 id="archName"></h2>
+        <p id="archEssence"></p>
+      </div>
+    </div>
+    <div class="traits">
+      <div class="trait strong">
+        <h4>💛 Сильные стороны</h4>
+        <ul id="archStrong"></ul>
+      </div>
+      <div class="trait weak">
+        <h4>🌙 Зоны роста</h4>
+        <ul id="archWeak"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- РЕЗУЛЬТАТ: ПОЗДРАВЛЕНИЕ -->
+  <div class="card hidden" id="greetCard">
+    <h3 style="font-size:18px;">💌 Ваше поздравление</h3>
+    <div class="greeting-box" id="greetText"></div>
+    <div class="row">
+      <button class="btn secondary" id="copyBtn">📋 Скопировать</button>
+      <button class="btn secondary" id="againBtn">🎲 Другой вариант</button>
+      <button class="btn secondary" id="newBtn">✏️ Новый человек</button>
+    </div>
+  </div>
+
+  <footer>Расчёт — классическая нумерология (число жизненного пути).<br>Сделано с любовью к людям и их датам ✨</footer>
+</div>
+
+<!-- PAYWALL -->
+<div class="modal-bg hidden" id="paywall">
+  <div class="card modal">
+    <h3>🌟 Бесплатные поздравления закончились</h3>
+    <p>Вы использовали 3 бесплатных расчёта. Оформите подписку — и создавайте безграничные персональные поздравления для всех близких, коллег и клиентов.</p>
+    <div class="plans">
+      <div class="plan">
+        <div class="price">199 ₽</div>
+        <div class="per">разовый пакет<br>10 поздравлений</div>
+      </div>
+      <div class="plan best">
+        <div class="badge">ХИТ</div>
+        <div class="price">299 ₽/мес</div>
+        <div class="per">безлимит +<br>полный разбор даты</div>
+      </div>
+      <div class="plan">
+        <div class="price">1990 ₽/год</div>
+        <div class="per">безлимит + разбор<br>совместимости</div>
+      </div>
+    </div>
+    <button class="btn" onclick="alert('Здесь будет подключение оплаты (ЮKassa / CloudPayments / Telegram Stars)')">Оформить подписку</button>
+    <button class="btn secondary" style="width:100%; margin-top:10px;" id="pwClose">Позже</button>
+  </div>
+</div>
+
+<script>
+/* ==================== ЗВЁЗДЫ ==================== */
+(function(){
+  const box = document.getElementById('stars');
+  for (let i=0;i<60;i++){
+    const s = document.createElement('span');
+    s.style.left = Math.random()*100+'%';
+    s.style.top = Math.random()*100+'%';
+    s.style.animationDelay = (Math.random()*3)+'s';
+    box.appendChild(s);
+  }
+})();
+
+/* ==================== НУМЕРОЛОГИЯ ==================== */
+// Свёртка числа с сохранением мастер-чисел 11/22/33
+function reduceNum(n, keepMaster = true){
+  while (n > 9){
+    if (keepMaster && (n === 11 || n === 22 || n === 33)) return n;
+    n = String(n).split('').reduce((a,d)=>a+Number(d),0);
+  }
+  return n;
+}
+// Число жизненного пути из даты YYYY-MM-DD
+function lifePath(dateStr){
+  const digits = dateStr.replace(/\D/g,'').split('').map(Number);
+  return reduceNum(digits.reduce((a,b)=>a+b,0));
+}
+// Число дня рождения
+function birthdayNum(dateStr){
+  return reduceNum(Number(dateStr.slice(8,10)));
+}
+// Персональный год
+function personalYear(dateStr){
+  const d = Number(dateStr.slice(8,10)), m = Number(dateStr.slice(5,7));
+  const y = new Date().getFullYear();
+  const sum = String(d).split('').concat(String(m).split(''), String(y).split('')).reduce((a,x)=>a+Number(x),0);
+  return reduceNum(sum, false);
+}
+
+/* ==================== АРХЕТИПЫ ==================== */
+const ARCH = {
+  1:{ name:'Первопроходец', essence:'Человек-огонь: рождён вести за собой и открывать новые пути',
+    strong:['Лидерство и смелость','Независимость','Умение начинать с нуля','Сила воли'],
+    weak:['Нетерпеливость','Трудно просить о помощи','Упрямство'],
+    core:'внутренний огонь и смелость идти первым там, где другие боятся сделать шаг',
+    hidden:'иногда так привык быть сильным, что забывает: рядом есть те, на кого можно опереться',
+    wish:'пусть рядом всегда будут люди, ради которых не нужно быть сильным — а можно просто быть собой' },
+  2:{ name:'Дипломат', essence:'Тонкая душа: чувствует людей и создаёт гармонию вокруг себя',
+    strong:['Эмпатия и чуткость','Дар примирять','Верность','Умение слушать'],
+    weak:['Излишняя уступчивость','Обидчивость','Зависимость от чужого мнения'],
+    core:'редкий дар чувствовать людей сердцем и делать мир вокруг мягче',
+    hidden:'так много отдаёт другим, что порой забывает спросить себя: «а чего хочу я?»',
+    wish:'пусть в этом году будет больше моментов только для себя — заслуженных и безусловных' },
+  3:{ name:'Вдохновитель', essence:'Человек-праздник: творчество, лёгкость и заразительная радость',
+    strong:['Творческий дар','Обаяние и харизма','Оптимизм','Красноречие'],
+    weak:['Распыление на много дел','Настроение волнами','Боязнь рутины'],
+    core:'талант превращать обычный день в праздник одним своим появлением',
+    hidden:'за лёгкостью и улыбкой прячется тонкая душа, которой важно, чтобы её творчество ценили',
+    wish:'пусть каждая из тысячи идей находит время и силы воплотиться' },
+  4:{ name:'Строитель', essence:'Надёжный фундамент: человек, на которого можно положиться всегда',
+    strong:['Надёжность','Трудолюбие','Системность','Верность слову'],
+    weak:['Излишняя серьёзность','Трудно отдыхать','Консерватизм'],
+    core:'редкая в наше время надёжность — слово, которое твёрже бетона',
+    hidden:'строя жизнь для всех вокруг, часто откладывает собственные мечты «на потом»',
+    wish:'пусть «потом» наконец наступит — время для своих желаний, а не только для чужих задач' },
+  5:{ name:'Искатель свободы', essence:'Ветер перемен: движение, впечатления и жажда жизни',
+    strong:['Лёгкость на подъём','Коммуникабельность','Смелость к переменам','Многогранность'],
+    weak:['Непостоянство','Скука от рутины','Импульсивность'],
+    core:'жажда жизни, которой хватило бы на троих, и умение делать каждый день непохожим на вчера',
+    hidden:'за вечным движением стоит поиск места, где по-настоящему спокойно и своё',
+    wish:'пусть свобода и дом перестанут спорить — и то и другое будет в твоей жизни сполна' },
+  6:{ name:'Хранитель', essence:'Сердце семьи: любовь, забота и красота во всём',
+    strong:['Забота о близких','Чувство прекрасного','Ответственность','Душевное тепло'],
+    weak:['Гиперопека','Жертвенность','Перфекционизм в отношениях'],
+    core:'огромное сердце, в котором хватает тепла на всех — и дом, который держится на этой любви',
+    hidden:'заботясь обо всех, редко позволяет заботиться о себе',
+    wish:'пусть забота, которую даришь миру, вернётся к тебе умноженной' },
+  7:{ name:'Мудрец', essence:'Глубокая душа: видит суть там, где другие видят поверхность',
+    strong:['Мощная интуиция','Аналитический ум','Глубина и мудрость','Свой взгляд на мир'],
+    weak:['Закрытость','Недоверие к людям','Уход в себя'],
+    core:'умение видеть суть вещей и людей — глубина, которую невозможно подделать',
+    hidden:'подпускает близко немногих, и быть среди этих немногих — настоящая честь',
+    wish:'пусть мир почаще оказывается достойным твоего доверия — и удивляет тебя в хорошем смысле' },
+  8:{ name:'Магнат', essence:'Энергия достижений: власть, масштаб и материальный успех',
+    strong:['Целеустремлённость','Деловая хватка','Умение управлять','Масштаб мышления'],
+    weak:['Трудоголизм','Всё контролировать','Жёсткость к себе'],
+    core:'редкое сочетание силы, амбиций и умения превращать цели в результат',
+    hidden:'за списком достижений стоит человек, которому важно, чтобы его любили не за успехи',
+    wish:'пусть успех приходит легче, а самые дорогие победы случаются не в работе' },
+  9:{ name:'Наставник', essence:'Старая душа: мудрость, великодушие и служение людям',
+    strong:['Великодушие','Мудрость','Умение прощать','Широта души'],
+    weak:['Всё принимать близко к сердцу','Раздаёт себя без остатка','Идеализм'],
+    core:'широта души, которая умеет прощать, понимать и отдавать — не требуя ничего взамен',
+    hidden:'отдавая столько людям, заслуживает, чтобы и о нём кто-то заботился так же щедро',
+    wish:'пусть добро, которое ты отдаёшь миру, вернётся в тройном размере' },
+  11:{ name:'Визионер', essence:'Мастер-число: тонкая интуиция и способность вдохновлять поколения',
+    strong:['Провидческая интуиция','Харизма','Духовная глубина','Дар вдохновлять'],
+    weak:['Высокая чувствительность','Внутреннее напряжение','Максимализм'],
+    core:'редчайший дар чувствовать то, что ещё не случилось, и вдохновлять людей одним словом',
+    hidden:'носит в себе столько энергии, что порой самому непросто с ней справляться',
+    wish:'пусть чувствительность будет не грузом, а суперсилой — и мир бережно отвечает взаимностью' },
+  22:{ name:'Зодчий', essence:'Мастер-число: способность воплощать великие замыслы в реальность',
+    strong:['Стратегическое мышление','Огромная работоспособность','Практическая мудрость','Масштаб'],
+    weak:['Гиперответственность','Давление собственных амбиций','Не умеет отдыхать'],
+    core:'способность строить то, что переживёт время — из мечты делать реальность',
+    hidden:'взваливает на себя столько, сколько не всякий выдержит, и делает вид, что легко',
+    wish:'пусть великие планы сбываются, а сил и времени хватает и на жизнь между ними' },
+  33:{ name:'Учитель любви', essence:'Мастер-число: высшее служение через любовь и сострадание',
+    strong:['Безусловная любовь','Дар исцелять словом','Мудрость сердца','Самоотдача'],
+    weak:['Забывает о себе','Берёт чужую боль','Завышенные требования к себе'],
+    core:'сердце, которое умеет любить без условий и лечить людей одним присутствием',
+    hidden:'спасая всех вокруг, заслуживает собственного спасателя',
+    wish:'пусть найдётся тот, кто позаботится о тебе так, как ты заботишься о мире' }
+};
+
+/* ==================== ГЕНЕРАТОР ПОЗДРАВЛЕНИЙ ==================== */
+const rnd = arr => arr[Math.floor(Math.random()*arr.length)];
+
+const HOLIDAY_OPEN = {
+  birthday: ['С днём рождения', 'С твоим днём', 'С днём твоего рождения'],
+  jubilee:  ['С юбилеем', 'С красивой круглой датой'],
+  newyear:  ['С Новым годом', 'С наступающим волшебством'],
+  march8:   ['С 8 Марта', 'С праздником весны'],
+  feb23:    ['С 23 Февраля', 'С днём настоящих защитников'],
+  wedding:  ['С днём вашей любви', 'С годовщиной'],
+  prof:     ['С профессиональным праздником', 'С твоим профессиональным днём'],
+  custom:   ['С праздником', 'С важным днём']
+};
+
+const WISHES = {
+  love:   { ty:'большой взаимной любви', vy:'большой взаимной любви' },
+  money:  { ty:'изобилия во всём — и пусть деньги любят тебя так же, как любят тебя люди', vy:'изобилия и финансового благополучия' },
+  health: { ty:'крепкого здоровья — это фундамент всего остального', vy:'крепкого здоровья' },
+  career: { ty:'карьерных высот, которые захватывают дух', vy:'блестящих профессиональных побед' },
+  create: { ty:'вдохновения и смелости творить', vy:'вдохновения и новых творческих вершин' },
+  calm:   { ty:'внутреннего покоя и тихого счастья', vy:'гармонии и внутреннего равновесия' },
+  travel: { ty:'дорог, которые приведут в самые красивые места мира', vy:'ярких путешествий' }
+};
+
+function buildGreeting(ctx){
+  const { name, arch, tone, vy, holiday, customHoliday, wishes, lp, bd, fem } = ctx;
+  const A = ARCH[arch];
+  const p = (t, v) => vy ? v : t; // выбор формы ты/Вы
+  const g = (f, m) => fem ? f : m; // выбор формы по полу
+
+  // 1. Открытие
+  let open = rnd(HOLIDAY_OPEN[holiday] || HOLIDAY_OPEN.custom);
+  if (holiday === 'custom' && customHoliday) open = 'С праздником — ' + customHoliday + ' — ';
+  const opening = {
+    warm:   `${name}, ${open.toLowerCase()}! ❤️`,
+    solemn: `${g('Дорогая','Дорогой')} ${name}! ${open}!`,
+    fun:    `${name}! ${open}, и держись — сейчас будет не открыточная банальщина 😏`,
+    deep:   `${name}… ${open}. И сегодня хочется сказать не дежурные слова, а настоящие.`,
+    bold:   `${name}, ${open.toLowerCase()}! 🔥 Без длинных прелюдий — сразу к сути.`
+  }[tone];
+
+  // 2. Суть по архетипу
+  const essence = {
+    warm:   `Знаешь, что в ${p('тебе','Вас')} самое удивительное? ${cap(A.core)}. Такие люди — редкость, и мне повезло, что ${p('ты есть','Вы есть')} в моей жизни.`,
+    solemn: `В ${p('тебе','Вас')} есть то, что нельзя купить и нельзя сыграть: ${A.core}. Это восхищает всех, кому посчастливилось ${p('тебя','Вас')} знать.`,
+    fun:    `Наука (ну ладно — нумерология 😄) утверждает: у ${p('тебя','Вас')} ${A.core}. И впервые наука не ошиблась!`,
+    deep:   `Дата рождения не случайна. В ${p('твоей','Вашей')} заложено главное: ${A.core}. Это ${p('твой','Ваш')} дар — и одновременно ${p('твой','Ваш')} путь.`,
+    bold:   `Скажу прямо: ${A.core} — это про ${p('тебя','Вас')}. Не каждому такое выдают при рождении.`
+  }[tone];
+
+  // 3. Тонкое место — как признание и поддержка
+  const support = {
+    warm:   `И ещё я знаю: ${p('ты','Вы')} ${A.hidden}. Так вот — ${p('помни','помните')}: ${p('тебя','Вас')} любят просто так. Не за что-то. А потому что ${p('ты — это ты','Вы — это Вы')}.`,
+    solemn: `Известно и другое: ${A.hidden}. Пусть же жизнь будет к ${p('тебе','Вам')} так же щедра, как ${p('ты','Вы')} к ней.`,
+    fun:    `Да, и ещё нумерология шепнула, что ${p('ты','Вы')} ${A.hidden}. Официально разрешаю сегодня об этом забыть и просто получать удовольствие! 🎉`,
+    deep:   `Есть в ${p('тебе','Вас')} и тонкая струна: ${A.hidden}. Пусть этот год бережно с ней обойдётся.`,
+    bold:   `И маленький инсайд: ${p('ты','Вы')} ${A.hidden}. Так что сегодня — никакой брони. Просто кайфуй!`
+  }[tone];
+
+  // 4. Пожелания по выбранным акцентам + фирменное пожелание архетипа
+  let wishPart = '';
+  const chosen = wishes.map(w => vy ? WISHES[w].vy : WISHES[w].ty);
+  if (chosen.length){
+    wishPart = `Желаю ${p('тебе','Вам')} ${chosen.join(', ')}. `;
+  }
+  wishPart += cap(A.wish) + '.';
+
+  // 5. Финал
+  const closing = {
+    warm:   `Обнимаю крепко. С праздником! ✨`,
+    solemn: `С глубоким уважением и самыми тёплыми пожеланиями!`,
+    fun:    `Ну всё, пошли праздновать — вселенная сегодня работает на ${p('тебя','Вас')}! 🥳`,
+    deep:   `Пусть этот новый круг жизни будет самым осознанным и самым счастливым.`,
+    bold:   `Гуляем! Этот год будет ${p('твоим','Вашим')} — число ${lp} гарантирует 😉✨`
+  }[tone];
+
+  return [opening, '', essence, '', support, '', wishPart, '', closing].join('\n');
+}
+function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+
+/* ==================== ФРИМИУМ ==================== */
+const FREE_KEY = 'numero_free_left';
+function freeLeft(){
+  const v = localStorage.getItem(FREE_KEY);
+  return v === null ? 3 : Number(v);
+}
+function useFree(){
+  localStorage.setItem(FREE_KEY, Math.max(0, freeLeft()-1));
+  renderCounter();
+}
+function renderCounter(){
+  const n = freeLeft();
+  document.getElementById('freeCounter').innerHTML =
+    n > 0 ? `Осталось бесплатных поздравлений: <b>${n} из 3</b>`
+          : `Бесплатные поздравления закончились · <b>оформите подписку</b>`;
+}
+
+/* ==================== UI ==================== */
+function setupChips(id, single = true){
+  const box = document.getElementById(id);
+  box.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    if (single){
+      box.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+      chip.classList.add('on');
+    } else {
+      chip.classList.toggle('on');
+    }
+  });
+}
+setupChips('genderChips'); setupChips('addrChips'); setupChips('toneChips'); setupChips('wishChips', false);
+const chipVal = id => document.querySelector(`#${id} .chip.on`)?.dataset.v;
+const chipVals = id => [...document.querySelectorAll(`#${id} .chip.on`)].map(c => c.dataset.v);
+
+document.getElementById('fHoliday').addEventListener('change', e => {
+  document.getElementById('customHolidayWrap').classList.toggle('hidden', e.target.value !== 'custom');
+});
+
+let lastCtx = null;
+
+function generate(fresh){
+  const name = document.getElementById('fName').value.trim();
+  const date = document.getElementById('fDate').value;
+  if (!name || !date){ toast('Заполните имя и дату рождения'); return; }
+  if (fresh && freeLeft() <= 0){ showPaywall(); return; }
+
+  const lp = lifePath(date);
+  const bd = birthdayNum(date);
+  const ctx = {
+    name, arch: lp, lp, bd,
+    tone: chipVal('toneChips') || 'warm',
+    vy: chipVal('addrChips') === 'vy',
+    fem: chipVal('genderChips') !== 'm',
+    holiday: document.getElementById('fHoliday').value,
+    customHoliday: document.getElementById('fCustomHoliday').value.trim(),
+    wishes: chipVals('wishChips')
+  };
+  lastCtx = ctx;
+
+  // Карточка архетипа
+  const A = ARCH[lp];
+  document.getElementById('archNum').textContent = lp;
+  document.getElementById('archName').textContent = A.name;
+  document.getElementById('archEssence').textContent = A.essence + ` · число пути ${lp}, число дня ${bd}`;
+  document.getElementById('archStrong').innerHTML = A.strong.map(s=>`<li>${s}</li>`).join('');
+  document.getElementById('archWeak').innerHTML = A.weak.map(s=>`<li>${s}</li>`).join('');
+  document.getElementById('archCard').classList.remove('hidden');
+
+  // Поздравление
+  document.getElementById('greetText').textContent = buildGreeting(ctx);
+  document.getElementById('greetCard').classList.remove('hidden');
+  document.getElementById('greetCard').scrollIntoView({behavior:'smooth'});
+
+  if (fresh) useFree();
+}
+
+document.getElementById('goBtn').addEventListener('click', () => generate(true));
+document.getElementById('againBtn').addEventListener('click', () => {
+  if (!lastCtx) return;
+  // повторная генерация того же человека — бесплатно
+  document.getElementById('greetText').textContent = buildGreeting(lastCtx);
+});
+document.getElementById('newBtn').addEventListener('click', () => {
+  document.getElementById('archCard').classList.add('hidden');
+  document.getElementById('greetCard').classList.add('hidden');
+  document.getElementById('fName').value = '';
+  window.scrollTo({top:0, behavior:'smooth'});
+});
+document.getElementById('copyBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('greetText').textContent)
+    .then(()=>toast('Скопировано! Отправьте с любовью 💌'));
+});
+
+function showPaywall(){ document.getElementById('paywall').classList.remove('hidden'); }
+document.getElementById('pwClose').addEventListener('click', () => {
+  document.getElementById('paywall').classList.add('hidden');
+});
+
+function toast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2500);
+}
+
+renderCounter();
+</script>
+</body>
+</html>
