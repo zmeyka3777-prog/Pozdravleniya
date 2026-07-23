@@ -1,0 +1,87 @@
+/**
+ * Прокси для ИИ-генерации — Cloudflare Pages Function.
+ * Доступна по адресу https://pozdravleniya.pages.dev/generate
+ *
+ * Прячет ключ OpenRouter (секрет OPENROUTER_KEY в настройках Pages-проекта),
+ * посетители сайта ничего не вводят. Если подключено KV-хранилище LIMITS —
+ * честно считает бесплатный лимит: 3 поздравления на IP за 30 дней.
+ */
+
+const ALLOWED_ORIGINS = [
+  'https://zmeyka3777-prog.github.io',
+  'https://pozdravleniya.pages.dev',
+];
+
+const SYSTEM_PROMPT =
+  'Ты — талантливый автор тёплых персональных поздравлений на русском языке. ' +
+  'Пишешь небанально, точно по заданному тону, попадая в характер человека.';
+
+function corsHeaders(request) {
+  const origin = request.headers.get('Origin') || '';
+  const ok = ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.pozdravleniya.pages.dev');
+  return {
+    'Access-Control-Allow-Origin': ok ? origin : ALLOWED_ORIGINS[0],
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Content-Type': 'application/json; charset=utf-8',
+  };
+}
+
+export async function onRequestOptions({ request }) {
+  return new Response(null, { headers: corsHeaders(request) });
+}
+
+export async function onRequestPost({ request, env }) {
+  const cors = corsHeaders(request);
+  const json = (obj, status = 200) =>
+    new Response(JSON.stringify(obj), { status, headers: cors });
+
+  if (!env.OPENROUTER_KEY) {
+    return json({ error: 'no_key', message: 'Секрет OPENROUTER_KEY не задан в настройках Pages' }, 500);
+  }
+
+  // Честный бесплатный лимит: 3 генерации на IP за 30 дней (нужно KV-хранилище LIMITS)
+  if (env.LIMITS) {
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    const key = 'ip:' + ip;
+    const used = Number(await env.LIMITS.get(key)) || 0;
+    const freeLimit = Number(env.FREE_LIMIT || 3);
+    if (used >= freeLimit) {
+      return json({ error: 'limit', message: 'Бесплатный лимит исчерпан' }, 402);
+    }
+    await env.LIMITS.put(key, String(used + 1), { expirationTtl: 60 * 60 * 24 * 30 });
+  }
+
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'bad_json' }, 400); }
+  const prompt = String(body.prompt || '').slice(0, 6000);
+  if (!prompt) return json({ error: 'no_prompt' }, 400);
+
+  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + env.OPENROUTER_KEY,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': ALLOWED_ORIGINS[1],
+      'X-Title': 'Kod Sudby Greetings',
+    },
+    body: JSON.stringify({
+      model: env.MODEL || 'moonshotai/kimi-k2:free',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.9,
+      max_tokens: 700,
+    }),
+  });
+
+  if (!resp.ok) {
+    return json({ error: 'upstream', message: 'OpenRouter HTTP ' + resp.status }, 502);
+  }
+  const data = await resp.json();
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) return json({ error: 'empty' }, 502);
+
+  return json({ text });
+}

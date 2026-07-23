@@ -559,9 +559,12 @@ function buildGreeting(ctx){
 }
 
 /* ==================== ГЕНЕРАЦИЯ ЧЕРЕЗ ИИ (OpenRouter / Kimi) ==================== */
-// Адрес прокси Cloudflare Worker (см. worker/README.md). Если задан —
-// ИИ работает у всех посетителей без ключей. Пусто — используется ключ из ⚙️.
-const PROXY_URL = '';
+// Адрес прокси (Cloudflare Pages Function, см. functions/generate.js).
+// Если задан — ИИ работает у всех посетителей без ключей.
+// На самом pages.dev используем относительный путь (same-origin).
+const PROXY_URL = location.hostname.endsWith('pages.dev')
+  ? '/generate'
+  : 'https://pozdravleniya.pages.dev/generate';
 
 const AI_KEYS = { enabled:'ks_ai_on', key:'ks_ai_key', model:'ks_ai_model' };
 const aiConf = () => ({
@@ -617,8 +620,14 @@ async function proxyGenerate(ctx){
 }
 
 async function aiGenerate(ctx){
-  if (PROXY_URL) return proxyGenerate(ctx);
   const conf = aiConf();
+  if (PROXY_URL){
+    try { return await proxyGenerate(ctx); }
+    catch(e){
+      // лимит — пробрасываем (покажется paywall); иначе пробуем личный ключ из ⚙️
+      if (e.limit || !(conf.enabled && conf.key)) throw e;
+    }
+  }
   const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
