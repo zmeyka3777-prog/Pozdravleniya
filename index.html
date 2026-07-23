@@ -559,6 +559,10 @@ function buildGreeting(ctx){
 }
 
 /* ==================== ГЕНЕРАЦИЯ ЧЕРЕЗ ИИ (OpenRouter / Kimi) ==================== */
+// Адрес прокси Cloudflare Worker (см. worker/README.md). Если задан —
+// ИИ работает у всех посетителей без ключей. Пусто — используется ключ из ⚙️.
+const PROXY_URL = '';
+
 const AI_KEYS = { enabled:'ks_ai_on', key:'ks_ai_key', model:'ks_ai_model' };
 const aiConf = () => ({
   enabled: localStorage.getItem(AI_KEYS.enabled) === '1',
@@ -598,7 +602,22 @@ ${ctx.wishes.length ? '- Особенно пожелать: ' + ctx.wishes.join(
 В ответе выведи ТОЛЬКО текст поздравления, без пояснений.`;
 }
 
+// Ответ прокси: {text} | 402 = лимит исчерпан (кидаем спец-ошибку для paywall)
+async function proxyGenerate(ctx){
+  const resp = await fetch(PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: buildAiPrompt(ctx) })
+  });
+  if (resp.status === 402){ const e = new Error('limit'); e.limit = true; throw e; }
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  const data = await resp.json();
+  if (!data.text) throw new Error('пустой ответ');
+  return data.text;
+}
+
 async function aiGenerate(ctx){
+  if (PROXY_URL) return proxyGenerate(ctx);
   const conf = aiConf();
   const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -712,7 +731,8 @@ async function generate(fresh){
   badge.classList.add('hidden');
 
   const conf = aiConf();
-  if (conf.enabled && conf.key){
+  const aiOn = PROXY_URL || (conf.enabled && conf.key);
+  if (aiOn){
     box.textContent = '✨ ИИ пишет поздравление…';
     btn.disabled = true;
     try {
@@ -720,7 +740,8 @@ async function generate(fresh){
       badge.classList.remove('hidden');
     } catch (e){
       box.textContent = buildGreeting(ctx);
-      toast('ИИ недоступен (' + e.message + ') — сгенерировано без ИИ');
+      if (e.limit){ localStorage.setItem(FREE_KEY, '0'); renderCounter(); showPaywall(); }
+      else toast('ИИ недоступен (' + e.message + ') — сгенерировано без ИИ');
     } finally {
       btn.disabled = false;
     }
@@ -739,14 +760,15 @@ document.getElementById('againBtn').addEventListener('click', async () => {
   const badge = document.getElementById('aiBadge');
   const conf = aiConf();
   badge.classList.add('hidden');
-  if (conf.enabled && conf.key){
+  if (PROXY_URL || (conf.enabled && conf.key)){
     box.textContent = '✨ ИИ пишет новый вариант…';
     try {
       box.textContent = await aiGenerate(lastCtx);
       badge.classList.remove('hidden');
     } catch(e){
       box.textContent = buildGreeting(lastCtx);
-      toast('ИИ недоступен — вариант без ИИ');
+      if (e.limit){ localStorage.setItem(FREE_KEY, '0'); renderCounter(); showPaywall(); }
+      else toast('ИИ недоступен — вариант без ИИ');
     }
   } else {
     box.textContent = buildGreeting(lastCtx);
