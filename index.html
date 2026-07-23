@@ -815,7 +815,7 @@ function setupChips(id, single = true){
     }
   });
 }
-setupChips('genderChips'); setupChips('addrChips'); setupChips('toneChips'); setupChips('wishChips', false);
+setupChips('genderChips'); setupChips('addrChips'); setupChips('toneChips'); setupChips('lenChips'); setupChips('wishChips', false);
 const chipVal = id => document.querySelector(`#${id} .chip.on`)?.dataset.v;
 const chipVals = id => [...document.querySelectorAll(`#${id} .chip.on`)].map(c => c.dataset.v);
 
