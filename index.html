@@ -395,6 +395,8 @@
       <div class="hint">По умолчанию: <b>moonshotai/kimi-k2:free</b>. Другие бесплатные: deepseek/deepseek-chat-v3-0324:free, qwen/qwen3-235b-a22b:free</div>
     </div>
     <button class="btn" id="aiSave">Сохранить</button>
+    <button class="btn secondary" style="width:100%; margin-top:10px;" id="aiTest">🧪 Проверить подключение ИИ</button>
+    <div class="hint" id="aiTestResult" style="margin-top:12px; white-space:pre-wrap;"></div>
     <button class="btn secondary" style="width:100%; margin-top:10px;" id="aiClose">Закрыть</button>
   </div>
 </div>
@@ -931,6 +933,61 @@ document.getElementById('aiSave').addEventListener('click', () => {
 });
 document.getElementById('aiClose').addEventListener('click', () => {
   document.getElementById('aiModal').classList.add('hidden');
+});
+
+/* Самодиагностика ИИ: проверяет прокси и ключ, объясняет по-русски, что чинить */
+function explainAiError(msg){
+  const m = (msg || '').toLowerCase();
+  if (m.includes('data policy') || m.includes('no endpoints'))
+    return '❌ OpenRouter не пускает к бесплатным моделям.\nЧТО СДЕЛАТЬ: зайдите на openrouter.ai → Settings → Privacy и включите разрешение бесплатных моделей (Enable free endpoints / Free model publication). Это одна галочка.';
+  if (m.includes('401') || m.includes('user not found') || m.includes('invalid'))
+    return '❌ Ключ не подошёл (OpenRouter отвечает 401).\nЧТО СДЕЛАТЬ: создайте новый ключ на openrouter.ai → Keys и обновите секрет в Cloudflare (Settings → Variables and Secrets), затем Deployments → Retry deployment.';
+  if (m.includes('429') || m.includes('rate'))
+    return '⏳ Лимит запросов OpenRouter на сегодня исчерпан (бесплатный тариф). Попробуйте позже.';
+  if (m.includes('402'))
+    return '💳 Сработал лимит бесплатных поздравлений прокси.';
+  return '❌ Ошибка: ' + msg;
+}
+
+document.getElementById('aiTest').addEventListener('click', async () => {
+  const out = document.getElementById('aiTestResult');
+  out.textContent = '⏳ Проверяю…';
+  const lines = [];
+  // Шаг 1: жив ли прокси и виден ли ключ
+  try {
+    const r = await fetch(PROXY_URL, { method: 'GET' });
+    if (r.status === 404) {
+      out.textContent = '❌ Прокси не найден (404).\nЧТО СДЕЛАТЬ: Pages-проект не подключён к GitHub — обновления не доезжают. Напишите Клоду «прокси 404», получите инструкцию по перепривязке.';
+      return;
+    }
+    const d = await r.json();
+    lines.push('✅ Прокси работает');
+    if (!d.key_found) {
+      out.textContent = lines.join('\n') + '\n❌ Секрет с ключом не найден.\nЧТО СДЕЛАТЬ: Cloudflare → Workers & Pages → pozdravleniya → Settings → Variables and Secrets → проверьте секрет (имя kimi или OPENROUTER_KEY, окружение Production) → Deployments → Retry deployment.';
+      return;
+    }
+    lines.push('✅ Ключ на месте (' + d.model + ')');
+  } catch (e) {
+    out.textContent = '❌ Прокси недоступен: ' + e.message;
+    return;
+  }
+  // Шаг 2: пробная генерация
+  out.textContent = lines.join('\n') + '\n⏳ Пробую сгенерировать тестовый текст…';
+  try {
+    const r = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'Ответь одним словом: работаю' })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.text) {
+      out.textContent = lines.join('\n') + '\n✅ ИИ отвечает! Всё подключено — генерируйте поздравления.';
+    } else {
+      out.textContent = lines.join('\n') + '\n' + explainAiError(d.message || ('HTTP ' + r.status));
+    }
+  } catch (e) {
+    out.textContent = lines.join('\n') + '\n' + explainAiError(e.message);
+  }
 });
 
 function toast(msg){
