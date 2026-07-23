@@ -1,0 +1,6 @@
+# Netlify: статический сайт из корня + функции из netlify/functions
+[build]
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"

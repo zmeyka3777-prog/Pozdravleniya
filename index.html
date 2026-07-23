@@ -658,12 +658,14 @@ function buildGreeting(ctx){
 }
 
 /* ==================== ГЕНЕРАЦИЯ ЧЕРЕЗ ИИ (OpenRouter / Kimi) ==================== */
-// Адрес прокси (Cloudflare Pages Function, см. functions/generate.js).
-// Если задан — ИИ работает у всех посетителей без ключей.
-// На самом pages.dev используем относительный путь (same-origin).
-const PROXY_URL = location.hostname.endsWith('pages.dev')
-  ? '/generate'
-  : 'https://pozdravleniya.pages.dev/generate';
+// Адреса прокси: пробуем по очереди (Netlify — основной, Cloudflare — запасной).
+// На netlify.app / pages.dev сначала свой же /generate (same-origin).
+const PROXY_URLS = [
+  ...((location.hostname.endsWith('pages.dev') || location.hostname.endsWith('netlify.app')) ? ['/generate'] : []),
+  'https://v-samoe-serdce.netlify.app/generate',
+  'https://pozdravleniya.pages.dev/generate'
+];
+const PROXY_URL = PROXY_URLS[0];
 
 const AI_KEYS = { enabled:'ks_ai_on', key:'ks_ai_key', model:'ks_ai_model' };
 // Бесплатные модели для перебора (состав на OpenRouter меняется)
@@ -720,22 +722,32 @@ ${ctx.wishes.length ? '- Особенно пожелать: ' + ctx.wishes.join(
 В ответе выведи ТОЛЬКО текст поздравления, без пояснений.`;
 }
 
-// Ответ прокси: {text} | 402 = лимит исчерпан (кидаем спец-ошибку для paywall)
+// Ответ прокси: {text} | 402 = лимит исчерпан (кидаем спец-ошибку для paywall).
+// Прокси пробуем по очереди — если один хостинг заблокирован, сработает другой.
 async function proxyGenerate(ctx){
-  const resp = await fetch(PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: buildAiPrompt(ctx) })
-  });
-  if (resp.status === 402){ const e = new Error('limit'); e.limit = true; throw e; }
-  if (!resp.ok){
-    let msg = 'HTTP ' + resp.status;
-    try { const d = await resp.json(); if (d.message) msg = d.message.slice(0, 200); } catch {}
-    throw new Error(msg);
+  const payload = JSON.stringify({ prompt: buildAiPrompt(ctx) });
+  let lastErr = new Error('прокси недоступен');
+  for (const url of PROXY_URLS){
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      });
+    } catch (e){ lastErr = e; continue; }
+    if (resp.status === 402){ const e = new Error('limit'); e.limit = true; throw e; }
+    if (!resp.ok){
+      let msg = 'HTTP ' + resp.status;
+      try { const d = await resp.json(); if (d.message) msg = d.message.slice(0, 200); } catch {}
+      lastErr = new Error(msg);
+      continue;
+    }
+    const data = await resp.json();
+    if (data.text) return data.text;
+    lastErr = new Error('пустой ответ');
   }
-  const data = await resp.json();
-  if (!data.text) throw new Error('пустой ответ');
-  return data.text;
+  throw lastErr;
 }
 
 async function aiGenerate(ctx){
