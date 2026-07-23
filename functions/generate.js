@@ -31,14 +31,33 @@ export async function onRequestOptions({ request }) {
   return new Response(null, { headers: corsHeaders(request) });
 }
 
+// Живой список бесплатных моделей с OpenRouter (приоритет — сильные в русском языке)
+async function fetchFreeModels() {
+  try {
+    const r = await fetch('https://openrouter.ai/api/v1/models');
+    if (!r.ok) return [];
+    const d = await r.json();
+    const free = (d.data || []).map(m => m.id).filter(id => id.endsWith(':free'));
+    const prio = ['deepseek', 'qwen', 'kimi', 'glm', 'llama', 'gemma', 'mistral'];
+    free.sort((a, b) => {
+      const ia = prio.findIndex(p => a.includes(p)), ib = prio.findIndex(p => b.includes(p));
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    return free;
+  } catch { return []; }
+}
+
 // Диагностика: открыть /generate в браузере — покажет состояние без секретов
 export async function onRequestGet({ request, env }) {
   const keyFound = Boolean(env.OPENROUTER_KEY || env.kimi || env.KIMI || env.Kimi);
+  const free = await fetchFreeModels();
   return new Response(JSON.stringify({
     status: 'функция работает',
     key_found: keyFound,
     key_hint: keyFound ? 'ключ на месте' : 'секрет не найден — добавьте OPENROUTER_KEY (или kimi) в Settings → Variables and Secrets и сделайте Retry deployment',
-    model: env.MODEL || 'авто: перебор бесплатных моделей (deepseek → qwen → kimi → …)',
+    model: env.MODEL || 'авто: живой список бесплатных моделей OpenRouter',
+    free_models_available: free.length,
+    free_models_top: free.slice(0, 6),
     limits_kv: Boolean(env.LIMITS),
   }, null, 2), { headers: corsHeaders(request) });
 }
@@ -71,19 +90,24 @@ export async function onRequestPost({ request, env }) {
   const prompt = String(body.prompt || '').slice(0, 6000);
   if (!prompt) return json({ error: 'no_prompt' }, 400);
 
-  // Список бесплатных моделей: пробуем по очереди, пока одна не ответит.
-  // Состав меняется на стороне OpenRouter — поэтому перебор, а не одна модель.
+  // Живой список бесплатных моделей с OpenRouter + запасной статический
   const FREE_MODELS = [
     'deepseek/deepseek-chat-v3-0324:free',
     'qwen/qwen3-235b-a22b:free',
     'moonshotai/kimi-k2:free',
     'meta-llama/llama-3.3-70b-instruct:free',
     'google/gemma-3-27b-it:free',
-    'mistralai/mistral-small-3.2-24b-instruct:free',
   ];
-  const models = [...new Set([env.MODEL, ...FREE_MODELS].filter(Boolean))];
+  const liveFree = await fetchFreeModels();
+  const models = [...new Set([env.MODEL, ...liveFree.slice(0, 6), ...FREE_MODELS].filter(Boolean))];
+
+  if (liveFree.length === 0 && !env.MODEL) {
+    // Живой список пуст — вероятно, OpenRouter закрыл бесплатный тариф
+    // (всё равно попробуем статический список ниже, вдруг список просто не загрузился)
+  }
 
   let lastErr = 'нет доступных моделей';
+  let allUnavailableForFree = true;
   for (const model of models) {
     const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -114,11 +138,15 @@ export async function onRequestPost({ request, env }) {
 
     const errText = (await resp.text()).slice(0, 300);
     lastErr = 'OpenRouter HTTP ' + resp.status + ' (' + model + '): ' + errText;
+    if (!errText.includes('unavailable for free')) allUnavailableForFree = false;
     // Модель недоступна/не найдена — пробуем следующую; другие ошибки фатальны
     const retryable = resp.status === 404 || resp.status === 400 || resp.status === 429 ||
       errText.includes('unavailable') || errText.includes('not found') || errText.includes('No endpoints');
     if (!retryable) break;
   }
 
+  if (allUnavailableForFree) {
+    lastErr = 'Все модели OpenRouter отвечают «unavailable for free» — похоже, бесплатный тариф OpenRouter закрыт. Нужен другой источник ИИ (Groq/Gemini) или небольшое пополнение баланса OpenRouter. ' + lastErr;
+  }
   return json({ error: 'upstream', message: lastErr }, 502);
 }
