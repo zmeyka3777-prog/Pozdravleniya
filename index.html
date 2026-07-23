@@ -209,7 +209,7 @@
     <p class="tagline">Поздравления, которые <b>не оставят равнодушным никого</b>.<br>
     Каждый текст создаётся под индивидуальность человека, скрытую в его дате рождения, —
     никаких шаблонных открыток, только слова, попадающие в самую суть.</p>
-    <button class="gear" id="gearBtn" title="Настройки ИИ">⚙️</button>
+    <button class="gear hidden" id="gearBtn" title="Настройки ИИ">⚙️</button>
   </header>
 
   <!-- ФОРМА -->
@@ -955,7 +955,13 @@ document.getElementById('pwClose').addEventListener('click', () => {
   document.getElementById('paywall').classList.add('hidden');
 });
 
-/* Настройки ИИ */
+/* Настройки ИИ — шестерёнка видна только владельцу.
+   Открыть: зайти на сайт с #admin в адресе (например, site.ru/#admin) —
+   после этого кнопка запоминается в этом браузере. Скрыть обратно: #noadmin */
+if (location.hash === '#admin') localStorage.setItem('ks_admin', '1');
+if (location.hash === '#noadmin') localStorage.removeItem('ks_admin');
+if (localStorage.getItem('ks_admin') === '1') document.getElementById('gearBtn').classList.remove('hidden');
+
 document.getElementById('gearBtn').addEventListener('click', () => {
   const conf = aiConf();
   document.getElementById('aiEnabled').checked = conf.enabled;
