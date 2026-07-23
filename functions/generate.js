@@ -37,7 +37,10 @@ async function fetchFreeModels() {
     const r = await fetch('https://openrouter.ai/api/v1/models');
     if (!r.ok) return [];
     const d = await r.json();
-    const free = (d.data || []).map(m => m.id).filter(id => id.endsWith(':free'));
+    // Берём только разговорные модели: служебные (код, модерация, эмбеддинги) не годятся для поздравлений
+    const unsuitable = /(code|coder|safety|guard|moderation|embed|rerank|audio|whisper|ocr|vision)/i;
+    const free = (d.data || []).map(m => m.id)
+      .filter(id => id.endsWith(':free') && !unsuitable.test(id));
     const prio = ['deepseek', 'qwen', 'kimi', 'glm', 'llama', 'gemma', 'mistral'];
     free.sort((a, b) => {
       const ia = prio.findIndex(p => a.includes(p)), ib = prio.findIndex(p => b.includes(p));
