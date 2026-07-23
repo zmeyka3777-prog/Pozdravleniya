@@ -86,7 +86,7 @@ export async function onRequestPost({ request, env }) {
         { role: 'user', content: prompt },
       ],
       temperature: 0.9,
-      max_tokens: 700,
+      max_tokens: 1300,
     }),
   });
 
